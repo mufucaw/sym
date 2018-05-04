@@ -12,26 +12,30 @@ const fs = require('fs')
  */
 const invert = rqeuire('lodash.invert')
 const shortid = require('shortid')
+const yaml = require('js-yaml')
 
 /**
- * Constants:
+ * Caw.
  */
-const FIND_ANCHORS_REGEX = /\s+(&\S+)/g
-const FIND_ALIASES_REGEX = /\s+(\*\S+)/g
+const _escapeRegex = (regex) => {
+  return regex.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1")
+}
 
 /**
- * Matches all occurances of regex. Returns array of regex matches.
+ * Caw.
  */
-const _matchAll = (regex, text) => {
-  let results = []
-  let matches
-  do {
-    matches = regex.exec(text)
-    if (matches) {
-      results.push(matches)
-    }
-  } while (matches)
-  return results
+const _regexReplaceAll = (text, find, replace) {
+  return str.replace(new RegExp(_escapeRegex(find), 'g'), replace)
+}
+
+/**
+ * Caw.
+ */
+const _replaceAll = (str, findReplaceMap) {
+  Object.entries(findReplaceMap).forEach((find, replace) => {
+    str = _regexReplaceAll(str, find, replace)
+  })
+  return str
 }
 
 /**
@@ -44,7 +48,22 @@ const _toHashedList = (array, hash) => {
     }
     return accumulator
   }, {})
-  return invert(results)
+  return results
+}
+
+/**
+ * Matches all occurances of regex. Returns array of regex matches.
+ */
+const _matchAll = (str, regex) => {
+  let results = []
+  let matches
+  do {
+    matches = regex.exec(str)
+    if (matches) {
+      results.push(matches)
+    }
+  } while (matches)
+  return results
 }
 
 /**
@@ -57,35 +76,6 @@ const _getRegexMatches = (regexMatches) => {
 }
 
 /**
- * Caw.
- */
-const _findAliasesAndAnchors = (text) => {
-  return {
-    aliases: _findAliases(text),
-    anchors: _findAnchors(text)
-  }
-}
-
-/**
- * Caw.
- */
-const _findAliases = _find(FIND_ALIASES_REGEX)
-
-/**
- * Caw.
- */
-const _findAnchors = _find(FIND_ANCHORS_REGEX)
-
-/**
- * Caw.
- */
-const _find = (regex) => {
-  return (text) => {
-    return _toHashedList(_getRegexMatches(_matchAll(regex, text), getFirstCaptureGroup, shortid))
-  }
-}
-
-/**
  * Reads contents of each file path, returns array of file contents.
  */
 const _readFiles = (filePaths) => filePaths.map(fs.readFileSync)
@@ -95,17 +85,37 @@ const _readFiles = (filePaths) => filePaths.map(fs.readFileSync)
  *
  * @param filePaths {Array}
  */
-const merge = (filePaths) => {
-  const files = _readFiles(filePaths)
-  const substitutedFiles = files.map((fileText) => {
-    const { aliases, anchors } = _findAliasesAndAnchors(fileText)
-    return _substituteAliasesAndAnchors(fileText, { aliases, anchors })
+const merge = (filePaths, substitutionRegexes) => {
+  let findReplaceMap = {}
+  const fileContents = _readFiles(filePaths)
+  const substitutedFiles = fileContents.map((fileContent) => {
+    const stringsToReplace = substitutionRegexes.map((substitutionRegex) => {
+      return _getRegexMatches(_matchAll(fileContent, regex))
+    })
+    findReplaceMap = _toHashedList(stringsToReplace)
+    return _replaceAll(fileContent, findReplaceMap)
   })
-  // dump mergedObject to YAML, output
+  const substitutedObjects = substitutedFiles.map((substitutedFile) => {
+    return yaml.safeLoad(substitutedFile) // Inline yaml.safeLoad in map call?
+  })
+  const mergedSubstitutedObject = substitutedObjects.reduce((accumulator, current) => {
+    return { ...accumulator, ...current }
+  }, {})
+  const mergedSubstitutedContent = yaml.safeDump(mergedObject)
+  const mergedRestoredContent = _replaceAll(mergedSubstitutedContent, invert(findReplaceMap))
+  return mergedRestoredContent
 }
 
 // Test:
-merge('/home/bb/code/circleci-microservice/test/dc-api.yml', '/home/bb/code/circleci-microservice/test/global.yml')
+const filePaths = [
+  '/home/bb/code/circleci-microservice/test/dc-api.yml',
+  '/home/bb/code/circleci-microservice/test/global.yml'
+]
+const substitutionRegexes = [
+  /\s+(&\S+)/g,
+  /\s+(\*\S+)/g
+]
+merge(filePaths, substitutionRegexes)
 
 module.exports = {
   merge

@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/muhfuhcaw/sym#readme",
   "dependencies": {
+    "js-yaml": "^3.11.0",
     "lodash.invert": "^4.3.0",
     "shortid": "^2.2.8"
   },
